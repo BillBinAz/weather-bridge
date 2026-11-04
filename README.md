@@ -101,7 +101,7 @@ Each data source requires specific setup in 1Password:
 - **Honeywell Alarm**: Authentication credentials
 - **Home Assistant**: Authentication credentials and configured alarm zones
 - **SensorPush**: API credentials and gateway ID
-- **ThermoWorks**: API access credentials
+- **ThermoWorks**: Read-only `twk_...` API key in the **password field** of the existing 1Password item selected by `THERMOWORKS_CONNECT_ITEM_ID`. The username is no longer used.
 - **AprilAire**: Cloud account credentials
 
 ### Home Assistant Alarm States
@@ -119,6 +119,21 @@ For Home Assistant contact zones, the `closed` value in the `/weather` response 
 ### Home Assistant Climate Switches
 
 Configure a Home Assistant switch as a climate sensor with `CLIMATE_SENSOR_<N>=14|<switch_id>|<label>`. The `/weather` climate sensor entry exposes the switch's Home Assistant `state`, preserving values such as `on`, `climate`, and `off`.
+
+### ThermoWorks
+
+ThermoWorks uses `GET https://cloud.thermoworks.com/api/v1/devices` with
+`Authorization: Bearer <API key>` to retrieve every device and its channels in one
+read-only request. Firebase login and individual channel requests are no longer used.
+Keep the API key in 1Password, not in sensor configuration or source control.
+
+Configure sensors as `CLIMATE_SENSOR_<N>=<type>|<device_id or serial>|<label>`.
+Existing device IDs remain supported; a serial such as `M100311323` can also be used.
+Types `7`, `8`, and `9` retain their existing channel mappings: ambient plus one
+probe, ambient plus humidity, and ambient plus two probes, respectively.
+Channels are ordered by the v1 `number` field (1-indexed); missing readings do not
+shift subsequent probes. Channel `units` take precedence over device `displayUnits`.
+Celsius temperatures are converted to Fahrenheit; humidity is not converted.
 
 ## 🧪 Testing
 
@@ -151,7 +166,7 @@ Current coverage includes:
 - **flask** (3.1.3): Web framework
 - **requests** (2.33.0): HTTP client library
 - **onepasswordconnectsdk** (2.0.0): 1Password credential management
-- **thermoworks-cloud** (0.1.11): ThermoWorks cloud API
+- **aiohttp** (3.13.0): Direct ThermoWorks Cloud HTTP API client
 - **pycognito** (2024.5.1): Amazon Cognito client for AprilAire authentication
 
 ## 🐳 Docker Configuration
