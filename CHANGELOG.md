@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Migrated ThermoWorks to the read-only Cloud v1 devices API, using the API key from the existing 1Password item's password field.
+- Upgraded aiohttp from 3.13.0 to 3.14.5 to incorporate upstream security fixes.
 
 ## [1.0.0] - 2026-04-30
 

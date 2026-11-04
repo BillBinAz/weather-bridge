@@ -166,7 +166,7 @@ Current coverage includes:
 - **flask** (3.1.3): Web framework
 - **requests** (2.33.0): HTTP client library
 - **onepasswordconnectsdk** (2.0.0): 1Password credential management
-- **aiohttp** (3.13.0): Direct ThermoWorks Cloud HTTP API client
+- **aiohttp** (3.14.5): Direct ThermoWorks Cloud HTTP API client
 - **pycognito** (2024.5.1): Amazon Cognito client for AprilAire authentication
 
 ## 🐳 Docker Configuration
