@@ -69,6 +69,8 @@ def _get_channels(raw_channels, device_units) -> list[DeviceChannel]:
         if channel_number < 1 or channel_number in channels:
             raise ValueError("ThermoWorks channel numbers must be unique and positive")
         value = raw_channel.get("value")
+        if raw_channel.get("enabled") is False or raw_channel.get("probeFailed") is True:
+            value = None
         if value is not None:
             value = float(value)
         units = raw_channel.get("units") or device_units
