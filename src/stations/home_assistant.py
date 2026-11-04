@@ -5,8 +5,6 @@ from typing import Any
 import requests
 import logging
 
-from thermoworks_cloud.utils import get_field_value
-
 logger = logging.getLogger(__name__)
 import json
 from requests import Session

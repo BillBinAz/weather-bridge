@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calculated Fahrenheit dew point for Ecobee thermostat climate sensors.
 - Raw Celsius/Fahrenheit conversion helpers alongside the rounded conversion helpers.
 
+### Changed
+- Migrated ThermoWorks to the read-only Cloud v1 devices API, using the API key from the existing 1Password item's password field.
+
 ## [1.0.0] - 2026-04-30
 
 ### Added

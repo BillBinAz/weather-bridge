@@ -42,11 +42,13 @@ def get_weather(home):
         if len(sensors) == 0:
             return
 
-        # asyncio.run(get_devices_for_user(home))
         loop = asyncio.new_event_loop()
-        task = loop.create_task(get_devices_for_user())
-        loop.run_until_complete(task)
-        results = task.result()
+        try:
+            task = loop.create_task(get_devices_for_user())
+            loop.run_until_complete(task)
+            results = task.result()
+        finally:
+            loop.close()
         devices = results[0]
         device_channels_by_device = results[1]
 
@@ -61,34 +63,27 @@ def get_weather(home):
                     continue
 
                 sensor = get_sensor_by_key(sensors, device.device_id)
+                if sensor is None:
+                    sensor = get_sensor_by_key(sensors, device.serial)
                 if sensor is not None:
                     if sensor.type == CLIMATE_TYPE_THERMOWORKS_NODE_WITH_HUMIDITY:
-                        # 0: Ambient, 1: Humidity
-                        if device_channels[0].value is not None:
-                            sensor.temperature = conversions.format_f(device_channels[0].value)
-
-                        if device_channels[1].value is not None:
-                            sensor.humidity = conversions.format_f(device_channels[1].value)
-                        home.climate.sensors.append(sensor)
+                        fields = ("temperature", "humidity")
                     elif sensor.type == CLIMATE_TYPE_THERMOWORKS_NODE_TWO_CHANNEL:
-                        # 0: Ambient, 1: Refrigerator, 2: Freezer
-                        if device_channels[0].value is not None:
-                            sensor.temperature = conversions.format_f(device_channels[0].value)
-
-                        if device_channels[1].value is not None:
-                            sensor.temperature_probe_0 = conversions.format_f(device_channels[1].value)
-
-                        if device_channels[2].value is not None:
-                            sensor.temperature_probe_1 = conversions.format_f(device_channels[2].value)
-                        home.climate.sensors.append(sensor)
+                        fields = ("temperature", "temperature_probe_0", "temperature_probe_1")
                     elif sensor.type == CLIMATE_TYPE_THERMOWORKS_NODE:
-                        # 0: Ambient, 1: Freezer
-                        if device_channels[0].value is not None:
-                            sensor.temperature = conversions.format_f(device_channels[0].value)
-
-                        if device_channels[1].value is not None:
-                            sensor.temperature_probe_0 = conversions.format_f(device_channels[1].value)
-                        home.climate.sensors.append(sensor)
+                        fields = ("temperature", "temperature_probe_0")
+                    else:
+                        continue
+                    if not device_channels:
+                        logger.error("ThermoWorks device %s has no channels", device.serial)
+                        continue
+                    for field, channel in zip(fields, device_channels):
+                        if channel.value is not None:
+                            value = channel.value
+                            if field != "humidity" and channel.units == "C":
+                                value = conversions.c_to_f_raw(value)
+                            setattr(sensor, field, conversions.format_f(value))
+                    home.climate.sensors.append(sensor)
             except Exception as e:
                 traceback.print_exc()
                 logging.error(f"Unable to get thermo_works:device {device.serial} {e}")

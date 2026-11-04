@@ -1,305 +1,202 @@
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
+import sys
 import unittest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from stations.thermo_works import thermo_works
+from stations.thermo_works.get_devices_for_user import Device, DeviceChannel, get_devices_for_user
 from weather import data
 
 
 class TestThermoWorks(unittest.TestCase):
+    def setUp(self):
+        self.environ_patch = patch.dict(os.environ, {}, clear=True)
+        self.environ_patch.start()
+        self.addCleanup(self.environ_patch.stop)
+        self.devices_patch = patch(
+            'stations.thermo_works.thermo_works.get_devices_for_user',
+            new_callable=AsyncMock,
+            return_value=([], {}),
+        )
+        self.get_devices = self.devices_patch.start()
+        self.addCleanup(self.devices_patch.stop)
+        self.home = data.Home()
 
-    @patch('stations.thermo_works.thermo_works.get_devices_for_user')
-    @patch('stations.thermo_works.thermo_works.asyncio.new_event_loop')
-    def test_get_weather_success(self, mock_loop, mock_get_devices):
-        """Test successful weather data retrieval from ThermoWorks."""
-        # Mock the async parts
-        mock_loop_instance = MagicMock()
-        mock_task = MagicMock()
-        mock_task.result.return_value = ([], {})  # No devices
-        mock_loop_instance.create_task.return_value = mock_task
-        mock_loop.return_value = mock_loop_instance
-
-        home = data.Home()
-        thermo_works.get_weather(home)
-
-        # Should not crash
-        self.assertIsNotNone(home)
-
-    def test_check_types_valid(self):
-        """Test check_types with valid thermoworks type."""
-        result = thermo_works.check_types("7|1|key|label")
-        self.assertTrue(result)
-
-    def test_check_types_zero(self):
-        """Test check_types with type 0 (always valid)."""
-        result = thermo_works.check_types("0|1|key|label")
-        self.assertTrue(result)
-
-    def test_check_types_invalid(self):
-        """Test check_types with invalid type."""
-        result = thermo_works.check_types("99|1|key|label")
-        self.assertFalse(result)
-
-    def test_check_types_invalid_format(self):
-        """Test check_types with malformed config."""
-        result = thermo_works.check_types("invalid")
-        self.assertFalse(result)
-
-    def test_check_types_none(self):
-        """Test check_types with None input."""
-        result = thermo_works.check_types(None)
-        self.assertFalse(result)
-    def test_check_types_humidity_type(self):
-        """Test check_types with humidity thermoworks type."""
-        result = thermo_works.check_types("8|1|key|label")
-        self.assertTrue(result)
-
-    def test_check_types_two_channel_type(self):
-        """Test check_types with two-channel thermoworks type."""
-        result = thermo_works.check_types("9|1|key|label")
-        self.assertTrue(result)
-
-    def test_get_sensor_by_key_found(self):
-        """Test get_sensor_by_key when sensor is found."""
-        sensors = [MagicMock(key="device1"), MagicMock(key="device2")]
-        result = thermo_works.get_sensor_by_key(sensors, "device1")
-        self.assertEqual(result, sensors[0])
-
-    def test_get_sensor_by_key_not_found(self):
-        """Test get_sensor_by_key when sensor is not found."""
-        sensors = [MagicMock(key="device1"), MagicMock(key="device2")]
-        result = thermo_works.get_sensor_by_key(sensors, "device3")
-        self.assertIsNone(result)
-
-    def test_get_sensor_by_key_empty_list(self):
-        """Test get_sensor_by_key with empty sensor list."""
-        result = thermo_works.get_sensor_by_key([], "device1")
-        self.assertIsNone(result)
-
-    @patch.dict('stations.thermo_works.thermo_works.os.environ', {})
-    @patch('stations.thermo_works.thermo_works.asyncio.new_event_loop')
-    def test_get_weather_no_sensors_configured(self, mock_loop):
-        """Test get_weather with no sensors configured."""
-        home = data.Home()
-        thermo_works.get_weather(home)
-
-        self.assertIsNotNone(home)
-        self.assertEqual(len(home.climate.sensors), 0)
-
-    @patch.dict('stations.thermo_works.thermo_works.os.environ', {'CLIMATE_SENSOR_1': '7|1|device1|label'})
-    @patch('stations.thermo_works.thermo_works.asyncio.new_event_loop')
-    def test_get_weather_device_without_device_id(self, mock_loop):
-        """Test get_weather with device that has no device_id."""
-        mock_loop_instance = MagicMock()
-        mock_task = MagicMock()
-
-        # Create mock device with no device_id
-        mock_device = MagicMock(serial="serial1", device_id=None)
-        device_channels_by_device = {"serial1": []}
-
-        mock_task.result.return_value = ([mock_device], device_channels_by_device)
-        mock_loop_instance.create_task.return_value = mock_task
-        mock_loop_instance.run_until_complete.return_value = None
-        mock_loop.return_value = mock_loop_instance
-
-        home = data.Home()
-        thermo_works.get_weather(home)
-
-        # Device without device_id should be skipped
-        self.assertEqual(len(home.climate.sensors), 0)
-
-    @patch.dict('stations.thermo_works.thermo_works.os.environ', {'CLIMATE_SENSOR_1': '7|1|device2|label'})
-    @patch('stations.thermo_works.thermo_works.asyncio.new_event_loop')
-    def test_get_weather_no_matching_sensor(self, mock_loop):
-        """Test get_weather when device doesn't match any configured sensor."""
-        mock_loop_instance = MagicMock()
-        mock_task = MagicMock()
-
-        # Create mock device with non-matching device_id
-        mock_device = MagicMock(serial="serial1", device_id="device1")
-        device_channels_by_device = {"serial1": []}
-
-        mock_task.result.return_value = ([mock_device], device_channels_by_device)
-        mock_loop_instance.create_task.return_value = mock_task
-        mock_loop_instance.run_until_complete.return_value = None
-        mock_loop.return_value = mock_loop_instance
-
-        home = data.Home()
-        thermo_works.get_weather(home)
-
-        # No matching sensor should result in no sensors added
-        self.assertEqual(len(home.climate.sensors), 0)
-
-    @patch.dict('stations.thermo_works.thermo_works.os.environ', {'CLIMATE_SENSOR_1': '7|1|device1|label'})
-    @patch('stations.thermo_works.thermo_works.asyncio.new_event_loop')
-    def test_get_weather_exception_handling(self, mock_loop):
-        """Test get_weather exception handling."""
-        mock_loop.side_effect = Exception("Event loop error")
-
-        home = data.Home()
-        # Should not raise exception
-        thermo_works.get_weather(home)
-
-        self.assertIsNotNone(home)
-
-    def test_check_types_multiple_valid_types(self):
-        """Test check_types recognizes all valid thermoworks types."""
-        valid_types = [
-            ("7|1|key|label", True),   # CLIMATE_TYPE_THERMOWORKS_NODE
-            ("8|1|key|label", True),   # CLIMATE_TYPE_THERMOWORKS_NODE_WITH_HUMIDITY
-            ("9|1|key|label", True),   # CLIMATE_TYPE_THERMOWORKS_NODE_TWO_CHANNEL
-            ("0|1|key|label", True),   # Always valid
-            ("6|1|key|label", False),  # Invalid type
-            ("10|1|key|label", False), # Invalid type
-        ]
-        for config, expected in valid_types:
+    def test_check_types(self):
+        for config, expected in (
+            ("7|key|label", True), ("8|key|label", True),
+            ("9|key|label", True), ("0|key|label", True),
+            ("6|key|label", False), ("99|key|label", False),
+            ("invalid", False), (None, False),
+        ):
             with self.subTest(config=config):
-                result = thermo_works.check_types(config)
-                self.assertEqual(result, expected)
+                self.assertEqual(thermo_works.check_types(config), expected)
 
-    @patch('stations.thermo_works.thermo_works.asyncio.new_event_loop')
-    def test_get_weather_handles_assertion_error(self, mock_loop):
-        """Test get_weather handles assertion errors from devices without serial."""
-        mock_loop.side_effect = AssertionError("No serial found")
+    def test_get_sensor_by_key(self):
+        sensors = [MagicMock(key="device1"), MagicMock(key="device2")]
+        self.assertIs(thermo_works.get_sensor_by_key(sensors, "device1"), sensors[0])
+        self.assertIsNone(thermo_works.get_sensor_by_key(sensors, "missing"))
+        self.assertIsNone(thermo_works.get_sensor_by_key([], "missing"))
 
-        home = data.Home()
-        # Should not raise exception, handled in try-except
-        thermo_works.get_weather(home)
+    def test_no_sensors_does_not_request_devices(self):
+        thermo_works.get_weather(self.home)
+        self.get_devices.assert_not_called()
+        self.assertEqual(self.home.climate.sensors, [])
 
-        self.assertIsNotNone(home)
+    def test_all_sensor_types_keep_channel_mappings(self):
+        os.environ.update({
+            'CLIMATE_SENSOR_1': '7|node|freezer',
+            'CLIMATE_SENSOR_2': '8|humidity|office',
+            'CLIMATE_SENSOR_3': '9|two_probes|fridge',
+        })
+        self.get_devices.return_value = (
+            [Device("node", "node"), Device("humidity", "humidity"),
+             Device("two_probes", "two_probes")],
+            {
+                "node": [DeviceChannel(72.555), DeviceChannel(0)],
+                "humidity": [DeviceChannel(70), DeviceChannel(55)],
+                "two_probes": [DeviceChannel(72.5), DeviceChannel(38), DeviceChannel(-5)],
+            },
+        )
+        thermo_works.get_weather(self.home)
+        self.get_devices.assert_awaited_once()
+        node, humidity, probes = self.home.climate.sensors
+        self.assertEqual(node.temperature, 72.56)
+        self.assertEqual(node.temperature_probe_0, 0)
+        self.assertEqual(humidity.temperature, 70)
+        self.assertEqual(humidity.humidity, 55)
+        self.assertEqual(probes.temperature, 72.5)
+        self.assertEqual(probes.temperature_probe_0, 38)
+        self.assertEqual(probes.temperature_probe_1, -5)
 
-    @patch.dict('stations.thermo_works.thermo_works.os.environ', {'CLIMATE_SENSOR_1': '8|1|device_humidity|label'})
-    @patch.dict('stations.thermo_works.thermo_works.os.environ', {'CLIMATE_SENSOR_1': '8|device_humidity|label'})
-    @patch('stations.thermo_works.thermo_works.get_devices_for_user')
-    @patch('stations.thermo_works.thermo_works.asyncio.new_event_loop')
-    @patch('stations.thermo_works.thermo_works.conversions.format_f')
-    def test_get_weather_humidity_sensor_flow(self, mock_format, mock_loop, mock_get_devices):
-        """Test get_weather processes humidity sensor correctly."""
-        mock_loop_instance = MagicMock()
-        mock_task = MagicMock()
+    def test_serial_matches_when_device_id_differs(self):
+        os.environ['CLIMATE_SENSOR_1'] = '7|M100311323|freezer'
+        self.get_devices.return_value = (
+            [Device("M100311323", "legacy_id")],
+            {"M100311323": [DeviceChannel(72), DeviceChannel(0)]},
+        )
+        thermo_works.get_weather(self.home)
+        self.assertEqual(len(self.home.climate.sensors), 1)
+        self.assertEqual(self.home.climate.sensors[0].temperature_probe_0, 0)
 
-        # Create mock device with temperature and humidity
-        mock_device = MagicMock(serial="serial1", device_id="device_humidity")
-        mock_channel0 = MagicMock(value=72.5)  # Ambient
-        mock_channel1 = MagicMock(value=55.0)  # Humidity
-        device_channels_by_device = {"serial1": [mock_channel0, mock_channel1]}
+    def test_v1_response_flows_into_configured_weather_sensors(self):
+        os.environ.update({
+            'CLIMATE_SENSOR_1': '7|M100311323|freezer',
+            'CLIMATE_SENSOR_2': '8|humidity|office',
+            'CLIMATE_SENSOR_3': '9|probes|fridge',
+        })
+        response = MagicMock(status=200)
+        response.json = AsyncMock(return_value={"devices": [
+            {"serial": "M100311323", "id": "device_id", "channels": [
+                {"number": 2, "value": 0}, {"number": 1, "value": 72.5},
+            ]},
+            {"serial": "humidity", "displayUnits": "C", "channels": [
+                {"number": 1, "value": 20}, {"number": 2, "value": 55, "units": "H"},
+            ]},
+            {"serial": "probes", "channels": [
+                {"number": 3, "value": -5}, {"number": 1, "value": 70},
+            ]},
+        ]})
+        with (
+            patch.object(thermo_works, "get_devices_for_user", new=get_devices_for_user),
+            patch(
+                'stations.thermo_works.get_devices_for_user.connect.get_credentials',
+                return_value=[MagicMock(label="password", value="twk_test_key")],
+            ),
+            patch('stations.thermo_works.get_devices_for_user.ClientSession') as session_class,
+        ):
+            session = session_class.return_value.__aenter__.return_value
+            session.get = MagicMock()
+            session.get.return_value.__aenter__.return_value = response
+            thermo_works.get_weather(self.home)
+            session.get.assert_called_once()
+        node, humidity, probes = self.home.climate.sensors
+        self.assertEqual(node.temperature, 72.5)
+        self.assertEqual(node.temperature_probe_0, 0)
+        self.assertEqual(humidity.temperature, 68)
+        self.assertEqual(humidity.humidity, 55)
+        self.assertEqual(probes.temperature, 70)
+        self.assertEqual(probes.temperature_probe_0, data.DEFAULT_TEMPERATURE)
+        self.assertEqual(probes.temperature_probe_1, -5)
 
-        mock_task.result.return_value = ([mock_device], device_channels_by_device)
-        mock_loop_instance.create_task.return_value = mock_task
-        mock_loop_instance.run_until_complete.return_value = None
-        mock_loop.return_value = mock_loop_instance
-        mock_format.side_effect = lambda x, *args: x
+    def test_celsius_temperatures_but_not_humidity_are_converted(self):
+        os.environ.update({
+            'CLIMATE_SENSOR_1': '8|humidity|office',
+            'CLIMATE_SENSOR_2': '9|probes|fridge',
+        })
+        self.get_devices.return_value = (
+            [Device("humidity", "humidity"), Device("probes", "probes")],
+            {
+                "humidity": [DeviceChannel(20, "C"), DeviceChannel(55, "C")],
+                "probes": [DeviceChannel(20, "C"), DeviceChannel(0, "C"),
+                           DeviceChannel(-18, "C")],
+            },
+        )
+        thermo_works.get_weather(self.home)
+        humidity, probes = self.home.climate.sensors
+        self.assertEqual(humidity.temperature, 68)
+        self.assertEqual(humidity.humidity, 55)
+        self.assertEqual(probes.temperature_probe_0, 32)
+        self.assertEqual(probes.temperature_probe_1, -0.4)
 
-        home = data.Home()
-        thermo_works.get_weather(home)
+    def test_missing_values_and_probes_keep_defaults(self):
+        os.environ['CLIMATE_SENSOR_1'] = '9|device|fridge'
+        self.get_devices.return_value = (
+            [Device("device", "device")],
+            {"device": [DeviceChannel(None), DeviceChannel(38)]},
+        )
+        thermo_works.get_weather(self.home)
+        sensor = self.home.climate.sensors[0]
+        self.assertEqual(sensor.temperature, data.DEFAULT_TEMPERATURE)
+        self.assertEqual(sensor.temperature_probe_0, 38)
+        self.assertEqual(sensor.temperature_probe_1, data.DEFAULT_TEMPERATURE)
 
-        # Verify format_f was called for temperature and humidity
-        self.assertGreater(mock_format.call_count, 0)
+    def test_no_matching_sensor_or_missing_device_identifier(self):
+        os.environ['CLIMATE_SENSOR_1'] = '7|configured|freezer'
+        self.get_devices.return_value = (
+            [Device("other", "other"), Device("", "")], {"other": []},
+        )
+        thermo_works.get_weather(self.home)
+        self.assertEqual(self.home.climate.sensors, [])
 
-    @patch.dict('stations.thermo_works.thermo_works.os.environ', {'CLIMATE_SENSOR_1': '9|device_two_ch|label'})
-    @patch('stations.thermo_works.thermo_works.get_devices_for_user')
-    @patch('stations.thermo_works.thermo_works.asyncio.new_event_loop')
-    @patch('stations.thermo_works.thermo_works.conversions.format_f')
-    def test_get_weather_two_channel_sensor_flow(self, mock_format, mock_loop, mock_get_devices):
-        """Test get_weather processes two-channel sensor correctly."""
-        mock_loop_instance = MagicMock()
-        mock_task = MagicMock()
+    def test_continues_after_device_without_channels(self):
+        os.environ.update({
+            'CLIMATE_SENSOR_1': '7|bad|bad',
+            'CLIMATE_SENSOR_2': '7|good|good',
+        })
+        self.get_devices.return_value = (
+            [Device("bad", "bad"), Device("good", "good")],
+            {"bad": [], "good": [DeviceChannel(72.5), DeviceChannel(0)]},
+        )
+        with self.assertLogs(thermo_works.logger, level="ERROR"):
+            thermo_works.get_weather(self.home)
+        self.assertEqual(len(self.home.climate.sensors), 1)
+        self.assertEqual(self.home.climate.sensors[0].label, 'good')
 
-        # Create mock device with ambient, refrigerator, and freezer channels
-        mock_device = MagicMock(serial="serial1", device_id="device_two_ch")
-        mock_channel0 = MagicMock(value=72.5)  # Ambient
-        mock_channel1 = MagicMock(value=38.0)  # Refrigerator
-        mock_channel2 = MagicMock(value=0.0)   # Freezer
-        device_channels_by_device = {"serial1": [mock_channel0, mock_channel1, mock_channel2]}
+    def test_event_loop_closes_on_success(self):
+        os.environ['CLIMATE_SENSOR_1'] = '7|device|freezer'
+        real_new_event_loop = thermo_works.asyncio.new_event_loop
+        loop = real_new_event_loop()
+        with patch.object(thermo_works.asyncio, "new_event_loop", return_value=loop):
+            thermo_works.get_weather(self.home)
+        self.assertTrue(loop.is_closed())
 
-        mock_task.result.return_value = ([mock_device], device_channels_by_device)
-        mock_loop_instance.create_task.return_value = mock_task
-        mock_loop_instance.run_until_complete.return_value = None
-        mock_loop.return_value = mock_loop_instance
-        mock_format.side_effect = lambda x, *args: x
+    def test_request_failure_is_logged_and_event_loop_closes(self):
+        os.environ['CLIMATE_SENSOR_1'] = '7|device|freezer'
+        self.get_devices.side_effect = RuntimeError("HTTP 401")
+        loop = thermo_works.asyncio.new_event_loop()
+        with (
+            patch.object(thermo_works.asyncio, "new_event_loop", return_value=loop),
+            patch.object(thermo_works.traceback, "print_exc"),
+            patch('builtins.print'),
+            self.assertLogs(level="ERROR") as logs,
+        ):
+            thermo_works.get_weather(self.home)
+        self.assertIn("HTTP 401", logs.output[0])
+        self.assertEqual(self.home.climate.sensors, [])
+        self.assertTrue(loop.is_closed())
 
-        home = data.Home()
-        thermo_works.get_weather(home)
-
-        # Verify format_f was called for all three channels
-        self.assertGreater(mock_format.call_count, 0)
-
-    @patch.dict('stations.thermo_works.thermo_works.os.environ', {'CLIMATE_SENSOR_1': '7|device_node|label'})
-    @patch('stations.thermo_works.thermo_works.get_devices_for_user')
-    @patch('stations.thermo_works.thermo_works.asyncio.new_event_loop')
-    @patch('stations.thermo_works.thermo_works.conversions.format_f')
-    def test_get_weather_node_sensor_flow(self, mock_format, mock_loop, mock_get_devices):
-        """Test get_weather processes node sensor correctly."""
-        mock_loop_instance = MagicMock()
-        mock_task = MagicMock()
-
-        # Create mock device with ambient and freezer channels
-        mock_device = MagicMock(serial="serial1", device_id="device_node")
-        mock_channel0 = MagicMock(value=72.5)  # Ambient
-        mock_channel1 = MagicMock(value=0.0)   # Freezer
-        device_channels_by_device = {"serial1": [mock_channel0, mock_channel1]}
-
-        mock_task.result.return_value = ([mock_device], device_channels_by_device)
-        mock_loop_instance.create_task.return_value = mock_task
-        mock_loop_instance.run_until_complete.return_value = None
-        mock_loop.return_value = mock_loop_instance
-        mock_format.side_effect = lambda x, *args: x
-
-        home = data.Home()
-        thermo_works.get_weather(home)
-
-        # Verify format_f was called for both channels
-        self.assertGreater(mock_format.call_count, 0)
-
-    @patch.dict('stations.thermo_works.thermo_works.os.environ', {'CLIMATE_SENSOR_1': '7|1|device|label'})
-    @patch('stations.thermo_works.thermo_works.asyncio.new_event_loop')
-    def test_get_weather_exception_in_finally(self, mock_loop):
-        """Test get_weather handles exceptions in finally block."""
-        mock_loop_instance = MagicMock()
-        mock_task = MagicMock()
-        
-        # Make result() raise an exception to trigger finally block
-        mock_task.result.side_effect = RuntimeError("Task failed")
-        mock_loop_instance.create_task.return_value = mock_task
-        mock_loop.return_value = mock_loop_instance
-
-        home = data.Home()
-        # Should not raise exception, handled in try-except-finally
-        thermo_works.get_weather(home)
-
-        self.assertIsNotNone(home)
-
-    @patch.dict('stations.thermo_works.thermo_works.os.environ', {
-        'CLIMATE_SENSOR_1': '7|device_bad|label',
-        'CLIMATE_SENSOR_2': '7|device_good|label'
-    })
-    @patch('stations.thermo_works.thermo_works.asyncio.new_event_loop')
-    @patch('stations.thermo_works.thermo_works.conversions.format_f')
-    def test_get_weather_continues_after_device_failure(self, mock_format, mock_loop):
-        """Test get_weather keeps processing later ThermoWorks devices after one fails."""
-        mock_loop_instance = MagicMock()
-        mock_task = MagicMock()
-
-        bad_device = MagicMock(serial="bad_serial", device_id="device_bad")
-        good_device = MagicMock(serial="good_serial", device_id="device_good")
-        device_channels_by_device = {
-            "bad_serial": [],
-            "good_serial": [MagicMock(value=72.5), MagicMock(value=0.0)]
-        }
-
-        mock_task.result.return_value = ([bad_device, good_device], device_channels_by_device)
-        mock_loop_instance.create_task.return_value = mock_task
-        mock_loop_instance.run_until_complete.return_value = None
-        mock_loop.return_value = mock_loop_instance
-        mock_format.side_effect = lambda x, *args: x
-
-        home = data.Home()
-        thermo_works.get_weather(home)
-
-        self.assertEqual(len(home.climate.sensors), 1)
-        self.assertEqual(home.climate.sensors[0].label, 'label')
 
 if __name__ == '__main__':
     unittest.main()
